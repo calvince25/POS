@@ -40,3 +40,5 @@ pnpm-debug.log*
 # System Files
 Thumbs.db
 desktop.ini
+
+.vercel
