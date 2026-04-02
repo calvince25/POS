@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --primary: #2271b1;
+  --primary-hover: #135e96;
+  --primary-light: #f0f6fb;
+  --secondary: #646970;
+  --background: #f0f0f1;
+  --foreground: #1d2327;
+  --card: #ffffff;
+  --muted: #f6f7f7;
+  --accent: #d63638;
+  --border: #dcdcde;
+  --sidebar: #1d2327;
+  --sidebar-hover: #2c3338;
+  --shadow-sm: 0 1px 1px rgba(0,0,0,0.04);
+  --shadow-md: 0 2px 4px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --muted: #0f172a;
+  --border: #334155;
+  --sidebar: #020617;
+  --sidebar-hover: #1e293b;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+  .wp-card {
+    @apply bg-white dark:bg-slate-900 border border-[var(--border)] shadow-sm;
+  }
+  
+  .btn-wp {
+    @apply bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white font-medium px-4 py-1.5 rounded-sm transition-all active:scale-[0.98] disabled:opacity-50 text-sm border border-transparent shadow-sm;
+  }
+
+  .btn-wp-secondary {
+    @apply bg-white hover:bg-slate-50 text-[var(--primary)] font-medium px-4 py-1.5 rounded-sm border border-[var(--primary)] transition-all text-sm;
+  }
+
+  .input-wp {
+    @apply w-full bg-white dark:bg-slate-800 border border-[var(--border)] rounded-sm px-3 py-2 focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all outline-none text-sm;
+  }
+
+  /* Sharpness override for common elements */
+  .rounded-sharp {
+    @apply rounded-sm;
+  }
+}
+
+/* Custom Scrollbar - WP Style */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-[#f0f0f1] dark:bg-slate-950;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-[#ccd0d4] dark:bg-slate-700;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-[#a1a7af] dark:bg-slate-600;
+}

@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  username     String        @unique
+  password     String
+  role         Role          @relation(fields: [roleId], references: [id])
+  roleId       String
+  status       UserStatus    @default(ACTIVE)
+  lastLogin    DateTime?
+  shifts       Shift[]
+  messagesSent Message[]     @relation("SentMessages")
+  messagesRecv Message[]     @relation("ReceivedMessages")
+  activities   ActivityLog[]
+  orders       Order[]
+  bookings     Booking[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // OWNER, MANAGER, WAITER, KITCHEN, RECEPTIONIST
+  permissions String?  // SQLite doesn't support JSON
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model MenuItem {
+  id            String           @id @default(uuid())
+  name          String           @unique
+  description   String?
+  price         Float
+  category      Category?        @relation(fields: [categoryId], references: [id])
+  categoryId    String?
+  subCategory   SubCategory?     @relation(fields: [subCategoryId], references: [id])
+  subCategoryId String?
+  isAvailable   Boolean          @default(true)
+  image         String?
+  orderItems    OrderItem[]
+  modifiers     Modifier[]
+  inventory     Inventory?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Inventory {
+  id           String   @id @default(uuid())
+  menuItem     MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemId   String   @unique
+  stock        Float    @default(0) // Quantity currently available
+  allocated    Float    @default(0) // Total allocated for the shift/day
+  minStock     Float    @default(5)
+  unit         String   @default("pcs")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Category {
+  id            String         @id @default(uuid())
+  name          String
+  image         String?
+  menu          Menu?          @relation(fields: [menuId], references: [id])
+  menuId        String?
+  subCategories SubCategory[]
+  items         MenuItem[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([name, menuId])
+}
+
+model Menu {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  description String?
+  categories  Category[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model SubCategory {
+  id         String     @id @default(uuid())
+  name       String
+  image      String?
+  category   Category   @relation(fields: [categoryId], references: [id])
+  categoryId String
+  items      MenuItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([name, categoryId])
+}
+
+model Modifier {
+  id         String   @id @default(uuid())
+  name       String
+  price      Float    @default(0)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  menuItemId String
+}
+
+model Table {
+  id        String      @id @default(uuid())
+  number    String      @unique
+  capacity  Int
+  status    TableStatus @default(AVAILABLE)
+  orders    Order[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  waiter      User        @relation(fields: [waiterId], references: [id])
+  waiterId    String
+  table       Table       @relation(fields: [tableId], references: [id])
+  tableId     String
+  status      OrderStatus @default(PENDING)
+  totalAmount Float
+  items       OrderItem[]
+  payments    Payment[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+  PAID
+}
+
+model OrderItem {
+  id                String             @id @default(uuid())
+  order             Order              @relation(fields: [orderId], references: [id])
+  orderId           String
+  menuItem          MenuItem           @relation(fields: [menuItemId], references: [id])
+  menuItemId        String
+  quantity          Int
+  price             Float
+  selectedModifiers SelectedModifier[]
+}
+
+model SelectedModifier {
+  id          String    @id @default(uuid())
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  orderItemId String
+  name        String
+  price       Float
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  order      Order?        @relation(fields: [orderId], references: [id])
+  orderId    String?
+  booking    Booking?      @relation(fields: [bookingId], references: [id])
+  bookingId  String?
+  amount     Float
+  method     PaymentMethod
+  reference  String?       // Transaction ID for M-Pesa, Card, etc.
+  status     PaymentStatus @default(PENDING)
+  details    String?       // SQLite doesn't support JSON
+  createdAt  DateTime      @default(now())
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  CARD
+  CHEQUE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Room {
+  id        String      @id @default(uuid())
+  number    String      @unique
+  type      String      // Single, Double, Deluxe, etc.
+  price     Float
+  amenities String?     // Comma-separated list e.g. "WiFi, TV, Breakfast"
+  status    RoomStatus  @default(AVAILABLE)
+  bookings  Booking[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+  MAINTENANCE
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  guestName   String
+  guestPhone  String?
+  room        Room          @relation(fields: [roomId], references: [id])
+  roomId      String
+  receptionist User         @relation(fields: [userId], references: [id])
+  userId      String
+  checkIn     DateTime
+  checkOut    DateTime
+  status      BookingStatus @default(CONFIRMED)
+  totalAmount Float
+  notes       String?
+  payments    Payment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  CHECKED_IN
+  CHECKED_OUT
+  COMPLETED
+}
+
+model Shift {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  date      DateTime
+  role      String   // Assigned role for this shift
+  startTime DateTime?
+  endTime   DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  senderId    String
+  isBroadcast Boolean  @default(false)
+  recipient   User?    @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  recipientId String?
+  createdAt   DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  action    String
+  details   String?  // SQLite doesn't support JSON
+  timestamp DateTime @default(now())
+}
