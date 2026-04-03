@@ -6,7 +6,6 @@ import {
   Calendar, 
   ChevronLeft, 
   ChevronRight, 
-  User as UserIcon,
   Clock,
   Briefcase,
   Home,
@@ -14,7 +13,6 @@ import {
   Info
 } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, parseISO, addWeeks, subWeeks } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
 
 // — Shift definitions —
 const SHIFT_OPTIONS = [
@@ -59,7 +57,6 @@ const DutyRoster = () => {
 
   const handleCellChange = (staffId: string, day: Date, value: string, existingShift: any) => {
     if (!isManager) return;
-    const opt = SHIFT_MAP[value] || SHIFT_MAP[''];
     // Default times based on shift value
     let startTime = null, endTime = null;
     if (value === 'MORNING') {
@@ -189,7 +186,7 @@ const DutyRoster = () => {
                               ))}
                             </select>
                             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
-                              <ChevronDown size={10} />
+                              <ChevronDown size={10} className="" />
                             </div>
                           </div>
                         ) : (
@@ -231,7 +228,7 @@ const DutyRoster = () => {
   );
 };
 
-const ChevronDown = ({ size, className }: { size: number, className: string }) => (
+const ChevronDown = ({ size, className = "" }: { size: number, className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M6 9l6 6 6-6" />
   </svg>
