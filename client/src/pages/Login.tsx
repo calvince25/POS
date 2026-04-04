@@ -128,7 +128,6 @@ const Login = () => {
           </div>
         </form>
       </motion.div>
->
 
       <div className="relative z-10 mt-5 flex space-x-4">
         <span className="text-xs text-white/40">Powered by RestoPOS</span>
