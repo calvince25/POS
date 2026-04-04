@@ -11,7 +11,7 @@ const testApi = async () => {
     res.on('data', chunk => raw += chunk);
     res.on('end', () => {
       console.log('Login Response:', res.statusCode, raw);
-      const token = JSON.parse(raw).token;
+      const token = JSON.parse(raw).accessToken;
 
       if (!token) return console.error('No token received');
 

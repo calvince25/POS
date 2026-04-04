@@ -78,5 +78,17 @@ export default defineConfig({
     cssMinify: true,
     // Enable source maps only in dev
     sourcemap: false,
-  }
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/socket.io': {
+        target: 'http://localhost:5000',
+        ws: true,
+      },
+    },
+  },
 })
