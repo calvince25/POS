@@ -180,6 +180,7 @@ export const getDailyReport = async (req: Request, res: Response) => {
     // Per Waiter
     const perWaiter: any = {};
     sales.forEach(sale => {
+      if (!sale.order?.waiter) return;
       const name = sale.order.waiter.name;
       perWaiter[name] = (perWaiter[name] || 0) + Number(sale.amount);
     });
@@ -193,6 +194,7 @@ export const getDailyReport = async (req: Request, res: Response) => {
     // Most Sold Items
     const perItem: any = {};
     sales.forEach(sale => {
+      if (!sale.order?.items) return;
       sale.order.items.forEach(item => {
         const itemName = item.menuItem.name;
         perItem[itemName] = (perItem[itemName] || 0) + item.quantity;
