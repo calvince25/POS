@@ -6,9 +6,63 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  READY
+  DELIVERED
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+// ─── Models ──────────────────────────────────────────────
 
 model User {
   id           String        @id @default(uuid())
@@ -17,7 +71,7 @@ model User {
   password     String
   role         Role          @relation(fields: [roleId], references: [id])
   roleId       String
-  status       String        @default("ACTIVE")
+  status       UserStatus    @default(ACTIVE)
   lastLogin    DateTime?
   shifts       Shift[]
   messagesSent Message[]     @relation("SentMessages")
@@ -32,65 +86,63 @@ model User {
 model Role {
   id          String   @id @default(uuid())
   name        String   @unique // OWNER, MANAGER, WAITER, KITCHEN, RECEPTIONIST
-  permissions String?  // String for SQLite (handle manually)
+  permissions Json?
   users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-// UserStatus Enum removed for SQLite compatibility
-
 model MenuItem {
-  id            String           @id @default(uuid())
-  name          String           @unique
+  id            String       @id @default(uuid())
+  name          String       @unique
   description   String?
   price         Float
-  category      Category?        @relation(fields: [categoryId], references: [id])
+  category      Category?    @relation(fields: [categoryId], references: [id])
   categoryId    String?
-  subCategory   SubCategory?     @relation(fields: [subCategoryId], references: [id])
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id])
   subCategoryId String?
-  isAvailable   Boolean          @default(true)
+  isAvailable   Boolean      @default(true)
   image         String?
   orderItems    OrderItem[]
   modifiers     Modifier[]
   inventory     Inventory?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 }
 
 model Inventory {
-  id           String   @id @default(uuid())
-  menuItem     MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  menuItemId   String   @unique
-  stock        Float    @default(0)
-  allocated    Float    @default(0)
-  minStock     Float    @default(5)
-  unit         String   @default("pcs")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id         String   @id @default(uuid())
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemId String   @unique
+  stock      Float    @default(0)
+  allocated  Float    @default(0)
+  minStock   Float    @default(5)
+  unit       String   @default("pcs")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Category {
-  id            String         @id @default(uuid())
+  id            String        @id @default(uuid())
   name          String
   image         String?
-  menu          Menu?          @relation(fields: [menuId], references: [id])
+  menu          Menu?         @relation(fields: [menuId], references: [id])
   menuId        String?
   subCategories SubCategory[]
   items         MenuItem[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@unique([name, menuId])
 }
 
 model Menu {
-  id          String      @id @default(uuid())
-  name        String      @unique
+  id          String     @id @default(uuid())
+  name        String     @unique
   description String?
   categories  Category[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 model SubCategory {
@@ -118,13 +170,11 @@ model Table {
   id        String      @id @default(uuid())
   number    String      @unique
   capacity  Int
-  status    String      @default("AVAILABLE")
+  status    TableStatus @default(AVAILABLE)
   orders    Order[]
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 }
-
-// TableStatus Enum removed for SQLite compatibility
 
 model Order {
   id          String      @id @default(uuid())
@@ -132,15 +182,13 @@ model Order {
   waiterId    String
   table       Table       @relation(fields: [tableId], references: [id])
   tableId     String
-  status      String      @default("PENDING")
+  status      OrderStatus @default(PENDING)
   totalAmount Float
   items       OrderItem[]
   payments    Payment[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
-
-// OrderStatus Enum removed for SQLite compatibility
 
 model OrderItem {
   id                String             @id @default(uuid())
@@ -162,64 +210,58 @@ model SelectedModifier {
 }
 
 model Payment {
-  id         String        @id @default(uuid())
-  order      Order?        @relation(fields: [orderId], references: [id])
-  orderId    String?
-  booking    Booking?      @relation(fields: [bookingId], references: [id])
-  bookingId  String?
-  amount     Float
-  method     String
-  reference  String?
-  status     String        @default("PENDING")
-  details    String?       // String for SQLite (handle manually)
-  createdAt  DateTime      @default(now())
+  id        String        @id @default(uuid())
+  order     Order?        @relation(fields: [orderId], references: [id])
+  orderId   String?
+  booking   Booking?      @relation(fields: [bookingId], references: [id])
+  bookingId String?
+  amount    Float
+  method    PaymentMethod
+  reference String?
+  status    PaymentStatus @default(PENDING)
+  details   Json?
+  createdAt DateTime      @default(now())
 }
-
-// PaymentMethod and PaymentStatus Enums removed for SQLite compatibility
 
 model Room {
-  id        String      @id @default(uuid())
-  number    String      @unique
-  type      String      
+  id        String     @id @default(uuid())
+  number    String     @unique
+  type      String
   price     Float
-  amenities String?     
-  status    String      @default("AVAILABLE")
+  amenities Json?
+  status    RoomStatus @default(AVAILABLE)
   bookings  Booking[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
-
-// RoomStatus Enum removed for SQLite compatibility
 
 model Booking {
-  id          String        @id @default(uuid())
-  guestName   String
-  guestPhone  String?
-  room        Room          @relation(fields: [roomId], references: [id])
-  roomId      String
-  receptionist User         @relation(fields: [userId], references: [id])
-  userId      String
-  checkIn     DateTime
-  checkOut    DateTime
-  status      String        @default("CONFIRMED")
-  totalAmount Float
-  notes       String?
-  payments    Payment[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(uuid())
+  guestName    String
+  guestPhone   String?
+  room         Room          @relation(fields: [roomId], references: [id])
+  roomId       String
+  receptionist User          @relation(fields: [userId], references: [id])
+  userId       String
+  checkIn      DateTime
+  checkOut     DateTime
+  status       BookingStatus @default(CONFIRMED)
+  totalAmount  Float
+  notes        String?
+  payments     Payment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
-// BookingStatus Enum removed for SQLite compatibility
-
 model Shift {
-  id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
+  id        String    @id @default(uuid())
+  user      User      @relation(fields: [userId], references: [id])
   userId    String
   date      DateTime
-  role      String   
+  role      String
   startTime DateTime?
   endTime   DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 model Message {
@@ -238,6 +280,6 @@ model ActivityLog {
   user      User     @relation(fields: [userId], references: [id])
   userId    String
   action    String
-  details   String?       // String for SQLite (handle manually)
+  details   Json?
   timestamp DateTime @default(now())
 }

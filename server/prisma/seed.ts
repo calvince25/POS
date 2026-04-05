@@ -1,22 +1,8 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import bcrypt from 'bcrypt';
 import 'dotenv/config';
-import path from 'path';
 
-// SQLite database path
-const DATABASE_URL = process.env.DATABASE_URL || 'file:./dev.db';
-const dbPath = DATABASE_URL.replace('file:', '');
-
-// Resolve path relative to project root (server directory)
-const resolvedPath = path.isAbsolute(dbPath) 
-  ? dbPath 
-  : path.resolve(process.cwd(), dbPath);
-
-console.log('Initializing Seed Prisma with SQLite at:', resolvedPath);
-
-const adapter = new PrismaBetterSqlite3({ url: 'file:' + resolvedPath });
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database...');
@@ -41,7 +27,6 @@ async function main() {
   const managerRole = await prisma.role.findUnique({ where: { name: 'MANAGER' } });
   const waiterRole = await prisma.role.findUnique({ where: { name: 'WAITER' } });
   const kitchenRole = await prisma.role.findUnique({ where: { name: 'KITCHEN' } });
-
   const receptionRole = await prisma.role.findUnique({ where: { name: 'RECEPTIONIST' } });
 
   // 2. Create Initial Manager
@@ -96,15 +81,14 @@ async function main() {
   // 5. Create Categories
   const categories = ['Main Course', 'Appetizers', 'Drinks', 'Desserts'];
   for (const name of categories) {
-    await prisma.category.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
+    let cat = await prisma.category.findFirst({ where: { name } });
+    if (!cat) {
+      await prisma.category.create({ data: { name } });
+    }
   }
 
-  const mainCategory = await prisma.category.findUnique({ where: { name: 'Main Course' } });
-  const drinksCategory = await prisma.category.findUnique({ where: { name: 'Drinks' } });
+  const mainCategory = await prisma.category.findFirst({ where: { name: 'Main Course' } });
+  const drinksCategory = await prisma.category.findFirst({ where: { name: 'Drinks' } });
 
   // 6. Create Menu Items
   const menuItems = [
@@ -154,19 +138,22 @@ async function main() {
   const room101 = await prisma.room.findUnique({ where: { number: '101' } });
   
   if (admin && room101) {
-    await prisma.booking.create({
-      data: {
-        guestName: 'Jane Doe',
-        guestPhone: '+254700000000',
-        roomId: room101.id,
-        userId: admin.id,
-        checkIn: new Date(),
-        checkOut: new Date(Date.now() + 86400000 * 2), // 2 days from now
-        status: 'CHECKED_IN',
-        totalAmount: room101.price * 2,
-        notes: 'VIP Guest'
-      }
-    });
+    const existingBooking = await prisma.booking.findFirst({ where: { roomId: room101.id }});
+    if (!existingBooking) {
+      await prisma.booking.create({
+        data: {
+          guestName: 'Jane Doe',
+          guestPhone: '+254700000000',
+          roomId: room101.id,
+          userId: admin.id,
+          checkIn: new Date(),
+          checkOut: new Date(Date.now() + 86400000 * 2), // 2 days from now
+          status: 'CHECKED_IN',
+          totalAmount: room101.price * 2,
+          notes: 'VIP Guest'
+        }
+      });
+    }
   }
 
   console.log('Seeding completed successfully!');
