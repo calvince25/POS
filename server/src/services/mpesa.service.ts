@@ -27,7 +27,7 @@ export const getAccessToken = async () => {
   }
 };
 
-export const stkPush = async (phoneNumber: string, amount: number, orderId: string) => {
+export const stkPush = async (phoneNumber: string, amount: number, referenceId: string) => {
   const token = await getAccessToken();
   const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
   const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
@@ -42,8 +42,8 @@ export const stkPush = async (phoneNumber: string, amount: number, orderId: stri
     PartyB: shortcode,
     PhoneNumber: phoneNumber,
     CallBackURL: process.env.MPESA_TUNNEL_URL || callbackUrl,
-    AccountReference: orderId,
-    TransactionDesc: `Payment for Order ${orderId}`,
+    AccountReference: referenceId,
+    TransactionDesc: `Payment for Reference ${referenceId}`,
   };
 
   try {

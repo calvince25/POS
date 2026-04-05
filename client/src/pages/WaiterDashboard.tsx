@@ -69,6 +69,9 @@ const WaiterDashboard = () => {
   const [isTrayOpen, setIsTrayOpen] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
   const [lastAddedItem, setLastAddedItem] = useState<string | null>(null);
+  const [settlementOrder, setSettlementOrder] = useState<any | null>(null);
+  const [settlementMethod, setSettlementMethod] = useState<PaymentMethod>(null);
+  const [isWaitingPush, setIsWaitingPush] = useState(false);
   
   const queryClient = useQueryClient();
   const { socket } = useSocket();
@@ -110,7 +113,14 @@ const WaiterDashboard = () => {
       };
       socket.on('order_status_update', handleUpdate);
       socket.on('new_broadcast_message', handleUpdate);
-      socket.on('payment_completed', handleUpdate);
+      socket.on('payment_completed', (data: any) => {
+        handleUpdate();
+        // Auto-close modal if this order was settled successfully
+        if (settlementOrder?.id === data.orderId || (data.order && settlementOrder?.id === data.order.id)) {
+          setSettlementOrder(null);
+          setIsWaitingPush(false);
+        }
+      });
       socket.on('payment_failed', (data: any) => {
         alert(`M-Pesa payment failed: ${data.reason || 'Unknown error'}`);
         handleUpdate();
@@ -249,20 +259,76 @@ const WaiterDashboard = () => {
     }
   };
 
-  const handleQuickSettle = async (orderId: string) => {
-    const method = window.prompt('Enter payment method (CASH, MPESA, CARD, CHEQUE):', 'CASH');
-    if (!method) return;
-    
-    if (['CASH', 'MPESA', 'CARD', 'CHEQUE'].includes(method.toUpperCase())) {
-      try {
-        await confirmPayment({ id: orderId, method: method.toUpperCase() });
-        queryClient.invalidateQueries({ queryKey: ['my-orders'] });
-        queryClient.invalidateQueries({ queryKey: ['tables'] });
-      } catch (err) {
-        alert('Failed to settle order.');
+  const handleQuickSettle = (order: any) => {
+    setSettlementOrder(order);
+    setSettlementMethod(null);
+    setIsWaitingPush(false);
+    setMpesaPhone('');
+  };
+
+  const handleConfirmSettlement = async () => {
+    if (!settlementOrder || !settlementMethod) return;
+
+    setIsProcessingOrder(true);
+    try {
+      if (settlementMethod === 'MPESA') {
+        if (!mpesaPhone) {
+          alert('Please enter a phone number for M-Pesa.');
+          setIsProcessingOrder(false);
+          return;
+        }
+        await mpesaMutation.mutateAsync({
+          orderId: settlementOrder.id,
+          phoneNumber: `254${mpesaPhone}`,
+          amount: Math.round(settlementOrder.totalAmount)
+        });
+        
+        // After successful initiation, show 'Waiting' view instead of closing
+        setIsWaitingPush(true);
+        setIsProcessingOrder(false);
+        return;
+      } else {
+        await confirmPayment({
+          id: settlementOrder.id,
+          method: settlementMethod
+        });
+        
+        setSettlementOrder(null);
+        setSettlementMethod(null);
+        setMpesaPhone('');
       }
-    } else {
-      alert('Invalid payment method.');
+      
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to confirm settlement.');
+    } finally {
+      setIsProcessingOrder(false);
+    }
+  };
+
+  const handleManualConfirm = async () => {
+    if (!settlementOrder) return;
+    
+    setIsProcessingOrder(true);
+    try {
+      await confirmPayment({
+        id: settlementOrder.id,
+        method: 'MPESA'
+      });
+      
+      setSettlementOrder(null);
+      setIsWaitingPush(false);
+      setSettlementMethod(null);
+      setMpesaPhone('');
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to manually confirm settlement.');
+    } finally {
+      setIsProcessingOrder(false);
     }
   };
 
@@ -653,7 +719,7 @@ const WaiterDashboard = () => {
                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{order.status}</p>
                            </div>
                            <button 
-                             onClick={() => handleQuickSettle(order.id)}
+                             onClick={() => handleQuickSettle(order)}
                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase tracking-widest transition-all"
                            >
                              Settle
@@ -1024,7 +1090,7 @@ const WaiterDashboard = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => processOrder(mpesaPhone)}
+                  onClick={() => processOrder(`254${mpesaPhone}`)}
                   disabled={mpesaPhone.length < 9 || isProcessingOrder}
                   className="flex-1 px-4 py-2.5 bg-[#4caf50] hover:bg-[#2e7d32] text-white rounded text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-green-100"
                 >
@@ -1037,6 +1103,165 @@ const WaiterDashboard = () => {
                     </>
                   )}
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SETTLEMENT MODAL (Modern & Integrated) */}
+      <AnimatePresence>
+        {settlementOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] px-4"
+            onClick={() => setSettlementOrder(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-white/20"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 bg-[#1d2327] text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-black uppercase tracking-tight">Settle Order</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Order #{settlementOrder.id.slice(-6).toUpperCase()} · Table {settlementOrder.table.number}</p>
+                </div>
+                <button onClick={() => setSettlementOrder(null)} className="text-slate-400 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                 {/* Summary Card */}
+                 <div className="bg-[#f8f9fa] border border-[#dcdcde] rounded-xl p-5 flex justify-between items-center">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Total Amount Due</span>
+                    <span className="text-2xl font-black text-[#2271b1]">KES {Number(settlementOrder.totalAmount).toLocaleString()}</span>
+                 </div>
+
+                 {!isWaitingPush ? (
+                   <>
+                     {/* Payment Method Selection */}
+                     <div className="space-y-3">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Select Payment Method</p>
+                        <div className="grid grid-cols-2 gap-3">
+                           {PAYMENT_METHODS.map((method) => (
+                             <button 
+                               key={method.id} 
+                               onClick={() => setSettlementMethod(method.id)}
+                               className={`relative flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${
+                                 settlementMethod === method.id 
+                                   ? 'border-[#2271b1] bg-blue-50/50 shadow-lg' 
+                                   : 'border-[#f0f0f1] hover:border-[#ccd0d4] bg-white'
+                               }`}
+                             >
+                               {method.img ? (
+                                 <img src={method.img} className="h-6 object-contain mb-2" alt="" />
+                               ) : (
+                                 method.icon && <method.icon className={`mb-2 ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`} size={20} />
+                               )}
+                               <span className={`text-[10px] font-black uppercase tracking-widest ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`}>
+                                 {method.label}
+                               </span>
+                               {settlementMethod === method.id && (
+                                 <div className="absolute -top-2 -right-2 bg-[#2271b1] text-white rounded-full p-1 border-2 border-white">
+                                   <CheckCircle2 size={10} />
+                                 </div>
+                               )}
+                             </button>
+                           ))}
+                        </div>
+                     </div>
+
+                     {/* Phone Number for M-Pesa */}
+                     <AnimatePresence>
+                        {settlementMethod === 'MPESA' && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden space-y-2"
+                          >
+                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Safaricom Number</label>
+                             <div className="flex items-center gap-2">
+                               <span className="px-3 py-2.5 bg-slate-50 border border-[#dcdcde] rounded-lg text-sm font-bold text-slate-400">+254</span>
+                               <input
+                                 type="tel"
+                                 placeholder="7XXXXXXXX"
+                                 value={mpesaPhone}
+                                 onChange={e => setMpesaPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                                 className="flex-1 border border-[#ccd0d4] rounded-lg px-4 py-2.5 text-sm font-medium outline-none focus:border-[#2271b1] focus:ring-4 focus:ring-blue-50"
+                                 autoFocus
+                               />
+                             </div>
+                          </motion.div>
+                        )}
+                     </AnimatePresence>
+                   </>
+                 ) : (
+                   <div className="py-8 flex flex-col items-center justify-center space-y-6 animate-in zoom-in-95 duration-300">
+                      <div className="relative">
+                         <div className="w-16 h-16 border-4 border-blue-100 border-t-[#2271b1] rounded-full animate-spin" />
+                         <Smartphone size={24} className="absolute inset-0 m-auto text-[#2271b1] animate-pulse" />
+                      </div>
+                      <div className="text-center">
+                         <h4 className="text-sm font-black uppercase tracking-widest text-[#1d2327]">STK Push Sent</h4>
+                         <p className="text-[11px] text-slate-400 font-medium mt-1">Waiting for guest to confirm on their phone...</p>
+                      </div>
+                      
+                      <div className="w-full pt-4 border-t border-slate-100 italic text-[10px] text-slate-400 text-center px-4">
+                         If the guest has already confirmed but the system hasn't updated, use the manual button below.
+                      </div>
+                   </div>
+                 )}
+              </div>
+
+              <div className="p-6 bg-slate-50 border-t border-[#f0f0f1] flex gap-3">
+                 <button
+                   onClick={() => {
+                     setSettlementOrder(null);
+                     setIsWaitingPush(false);
+                   }}
+                   className="flex-1 px-4 py-3 border border-[#ccd0d4] text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all"
+                 >
+                   {isWaitingPush ? 'Close' : 'Cancel'}
+                 </button>
+                 
+                 {isWaitingPush ? (
+                    <button
+                      disabled={isProcessingOrder}
+                      onClick={handleManualConfirm}
+                      className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-emerald-100 flex items-center justify-center gap-2"
+                    >
+                      {isProcessingOrder ? (
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                           <CheckCircle2 size={16} />
+                           Confirm Received (Setted)
+                        </>
+                      )}
+                    </button>
+                 ) : (
+                    <button
+                      disabled={!settlementMethod || (settlementMethod === 'MPESA' && mpesaPhone.length < 9) || isProcessingOrder}
+                      onClick={handleConfirmSettlement}
+                      className="flex-[2] px-4 py-3 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
+                    >
+                      {isProcessingOrder ? (
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                           <CheckCircle2 size={16} />
+                           Confirm Settlement
+                        </>
+                      )}
+                    </button>
+                 )}
               </div>
             </motion.div>
           </motion.div>
