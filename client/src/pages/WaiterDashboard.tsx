@@ -14,6 +14,7 @@ import {
   CreditCard, 
   Settings,
   Search,
+  ChevronDown,
   Bell,
   Plus,
   Minus,
@@ -724,12 +725,26 @@ const WaiterDashboard = () => {
                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{order.status}</p>
                            </div>
                            {user?.role !== 'MANAGER' && (
-                             <button 
-                               onClick={() => handleQuickSettle(order)}
-                               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase tracking-widest transition-all"
-                             >
-                               Settle
-                             </button>
+                             <div className="flex items-center gap-2">
+                               <button 
+                                 onClick={() => {
+                                   if(window.confirm(`Mark Order #${order.id.slice(-4).toUpperCase()} as PAID via CASH?`)) {
+                                     confirmPaymentMutation({ id: order.id, method: 'CASH' });
+                                   }
+                                 }}
+                                 title="Quick Set as Paid"
+                                 className="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border border-emerald-300"
+                               >
+                                 <CheckCircle2 size={12} /> Paid
+                               </button>
+                               <button 
+                                 onClick={() => handleQuickSettle(order)}
+                                 title="Full Payment Procedure"
+                                 className="px-3 py-2 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-md text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center gap-1.5"
+                               >
+                                 <CreditCard size={12} /> Settle
+                               </button>
+                             </div>
                            )}
                         </div>
                       </div>

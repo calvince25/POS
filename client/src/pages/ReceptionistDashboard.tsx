@@ -333,11 +333,24 @@ const ReceptionistDashboard = () => {
                       {/* Active guest info */}
                       {activeB && (
                         <div className={`mt-1 pt-1.5 border-t ${room.status === 'OCCUPIED' ? 'border-blue-200' : 'border-violet-200'}`}>
-                          <div className="flex items-center gap-1 text-[9px] font-bold text-[#1d2327] uppercase truncate">
-                            <User size={9} />
-                            <span className="truncate">{activeB.guestName}</span>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1 text-[9px] font-black text-[#1d2327] uppercase truncate">
+                              <User size={10} className="text-[#2271b1]" />
+                              <span className="truncate">{activeB.guestName}</span>
+                            </div>
+                            <span className="text-[8px] font-bold text-blue-600 bg-blue-50 px-1 rounded">
+                              {differenceInDays(new Date(activeB.checkOut), new Date())}d left
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1 text-[8px] text-[#646970] mt-0.5">
+                          
+                          {activeB.guestPhone && (
+                            <div className="flex items-center gap-1 text-[8px] text-slate-500 mb-1">
+                              <Phone size={8} />
+                              <span>{activeB.guestPhone}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1 text-[8px] text-[#646970]">
                             <Clock size={8} />
                             <span>{format(new Date(activeB.checkIn), 'MMM dd')} → {format(new Date(activeB.checkOut), 'MMM dd')}</span>
                           </div>
@@ -358,6 +371,19 @@ const ReceptionistDashboard = () => {
                             Available for Booking
                           </div>
                         )
+                      ) : room.status === 'OCCUPIED' ? (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (activeB && window.confirm(`Checkout guest ${activeB.guestName} from Room ${room.number}?`)) {
+                              statusMutation.mutate({ id: activeB.id, status: 'CHECKED_OUT' });
+                            }
+                          }}
+                          disabled={statusMutation.isPending}
+                          className="w-full mt-2 md:mt-1 text-xs md:text-[9px] font-bold bg-[#1d2327] hover:bg-slate-700 text-white py-2.5 md:py-1.5 rounded-sm transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+                        >
+                          <LogOut size={10} /> Quick Checkout
+                        </button>
                       ) : room.status === 'CLEANING' ? (
                         <button
                           onClick={e => {
