@@ -27,8 +27,9 @@ enum TableStatus {
 
 enum OrderStatus {
   PENDING
-  IN_PROGRESS
+  PREPARING
   READY
+  SERVED
   DELIVERED
   PAID
   CANCELLED
@@ -52,6 +53,7 @@ enum RoomStatus {
   AVAILABLE
   OCCUPIED
   MAINTENANCE
+  CLEANING
   RESERVED
 }
 
