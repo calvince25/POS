@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// For production, we strictly use relative path /api to ensure it matches the Vercel domain.
+// In development, we fallback to VITE_API_URL or '/api'.
+const isProd = import.meta.env.PROD;
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: isProd ? '/api' : (import.meta.env.VITE_API_URL || '/api'),
 });
 
 // Request interceptor to add JWT token

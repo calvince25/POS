@@ -29,6 +29,13 @@ const io = new Server(server, {
 
 app.use(cors());
 app.use(express.json());
+
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] Incoming ${req.method} request to: ${req.url}`);
+  next();
+});
+
 app.use('/public', express.static(path.join(__dirname, '../public')));
 
 // Socket.io injection
@@ -44,6 +51,11 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/kitchen', kitchenRoutes);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'System is healthy', timestamp: new Date() });
+});
 
 // Auto-seed: Ensure default users exist (handles Vercel serverless resets)
 async function ensureDefaultUsers() {

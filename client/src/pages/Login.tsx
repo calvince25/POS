@@ -20,9 +20,15 @@ const Login = () => {
       await login({ username, password });
       navigate('/');
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Something went wrong. Please check your connection and try again.';
+      const targetUrl = `${err.config?.baseURL || ''}${err.config?.url || ''}`;
+      const msg = err.response?.data?.message || `Connection failed to: ${targetUrl}. Check browser console for CORS/Network errors.`;
       setError(msg);
-      console.error('Login failure:', err);
+      console.error('Detailed login failure:', {
+        message: err.message,
+        url: targetUrl,
+        baseURL: err.config?.baseURL,
+        response: err.response?.data
+      });
     } finally {
       setIsLoading(false);
     }
