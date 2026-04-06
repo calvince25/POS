@@ -19,8 +19,10 @@ const Login = () => {
     try {
       await login({ username, password });
       navigate('/');
-    } catch (err) {
-      setError('Invalid username or password. Please try again.');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Something went wrong. Please check your connection and try again.';
+      setError(msg);
+      console.error('Login failure:', err);
     } finally {
       setIsLoading(false);
     }

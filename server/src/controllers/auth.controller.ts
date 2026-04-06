@@ -14,20 +14,25 @@ export const login = async (req: Request, res: Response) => {
     console.log('Login request for:', { username });
 
     if (!user) {
-      console.log('User not found in DB');
-      return res.status(401).json({ message: 'Invalid username or password' });
+      console.log('User not found in DB:', username);
+      return res.status(401).json({ message: 'User not found. Check the username and try again.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log('Bcrypt match:', isMatch);
+    console.log('Password match result:', isMatch);
 
     if (!isMatch) {
       console.log('Password mismatch for user:', username);
-      return res.status(401).json({ message: 'Invalid username or password' });
+      return res.status(401).json({ message: 'Incorrect password. Please try again.' });
     }
 
     if (user.status === 'INACTIVE') {
       return res.status(403).json({ message: 'Account is deactivated' });
+    }
+
+    if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
+      console.error('Missing JWT Secrets in environment variables');
+      return res.status(500).json({ message: 'Internal server error: Missing server configuration' });
     }
 
     const accessToken = jwt.sign(
@@ -68,9 +73,9 @@ export const login = async (req: Request, res: Response) => {
         role: user.role.name,
       },
     });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+  } catch (error: any) {
+    console.error('Login error details:', error.message || error);
+    res.status(500).json({ message: `Internal server error: ${error.message || 'Unknown error'}` });
   }
 };
 
