@@ -91,7 +91,7 @@ export const createMenuItem = async (req: any, res: Response) => {
         price: Number(price),
         categoryId: categoryId || null,
         subCategoryId: subCategoryId || null,
-        isAvailable: isAvailable === 'true' || isAvailable === true,
+        isAvailable: isAvailable === 'true' || isAvailable === true || isAvailable === 'on',
         image: imagePath,
         modifiers: parsedModifiers && Array.isArray(parsedModifiers) ? {
           create: parsedModifiers.map((m: any) => ({
@@ -132,7 +132,7 @@ export const updateMenuItem = async (req: any, res: Response) => {
         price: Number(price),
         categoryId: categoryId || null,
         subCategoryId: subCategoryId || null,
-        isAvailable: isAvailable === 'true' || isAvailable === true,
+        isAvailable: isAvailable === 'true' || isAvailable === true || isAvailable === 'on',
         image: imagePath,
         modifiers: parsedModifiers && Array.isArray(parsedModifiers) ? {
           create: parsedModifiers.map((m: any) => ({

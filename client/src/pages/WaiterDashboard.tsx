@@ -15,7 +15,6 @@ import {
   Settings,
   Search,
   Bell,
-  ChevronDown,
   Plus,
   Minus,
   X,
@@ -70,7 +69,9 @@ const WaiterDashboard = () => {
   const [selectedTableId, setSelectedTableId] = useState<string>('');
   const [lastAddedItem, setLastAddedItem] = useState<string | null>(null);
   const [settlementOrder, setSettlementOrder] = useState<any | null>(null);
-  const [settlementMethod, setSettlementMethod] = useState<PaymentMethod>(null);
+  const [settlementMethod, setSettlementMethod] = useState<any>(null);
+  const [splitPayments, setSplitPayments] = useState<{ method: string, amount: number }[]>([]);
+  const [isSplitMode, setIsSplitMode] = useState(false);
   const [isWaitingPush, setIsWaitingPush] = useState(false);
   
   const queryClient = useQueryClient();
@@ -94,8 +95,23 @@ const WaiterDashboard = () => {
     enabled: activeView === 'messages'
   });
 
-  // M-Pesa STK Push mutation
-  const mpesaMutation = useMutation({
+  // Payment Mutations
+  const { mutate: confirmPaymentMutation, isPending: isConfirmingPayment } = useMutation({
+    mutationFn: (data: { id: string, method: string, payments?: any[] }) => api.post(`/orders/confirm-payment/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      setSettlementOrder(null);
+      setSettlementMethod(null);
+      setSplitPayments([]);
+      setIsSplitMode(false);
+      setOrderSuccess(true);
+      setTimeout(() => setOrderSuccess(false), 3000);
+    },
+    onError: (err: any) => alert(err.response?.data?.message || 'Error confirming payment')
+  });
+
+  const initiateMpesaMutation = useMutation({
     mutationFn: (data: { orderId: string, phoneNumber: string, amount: number }) =>
       api.post('/payments/mpesa/initiate', data),
     onSuccess: () => {
@@ -179,8 +195,7 @@ const WaiterDashboard = () => {
   };
 
   const subTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const tax = subTotal * 0.05;
-  const total = subTotal + tax;
+  const total = subTotal;
 
   const handlePlaceOrder = async () => {
     if (cart.length === 0) return;
@@ -220,7 +235,7 @@ const WaiterDashboard = () => {
       // 2. Process payment
       if (selectedPayment === 'MPESA' && mpesaPhoneNumber) {
         // Initiate STK Push
-        await mpesaMutation.mutateAsync({
+        await initiateMpesaMutation.mutateAsync({
           orderId: order.id,
           phoneNumber: mpesaPhoneNumber,
           amount: Math.round(total)
@@ -267,69 +282,57 @@ const WaiterDashboard = () => {
   };
 
   const handleConfirmSettlement = async () => {
-    if (!settlementOrder || !settlementMethod) return;
+    if (!settlementOrder) return;
 
-    setIsProcessingOrder(true);
-    try {
-      if (settlementMethod === 'MPESA') {
-        if (!mpesaPhone) {
-          alert('Please enter a phone number for M-Pesa.');
-          setIsProcessingOrder(false);
-          return;
-        }
-        await mpesaMutation.mutateAsync({
-          orderId: settlementOrder.id,
-          phoneNumber: `254${mpesaPhone}`,
-          amount: Math.round(settlementOrder.totalAmount)
-        });
-        
-        // After successful initiation, show 'Waiting' view instead of closing
-        setIsWaitingPush(true);
-        setIsProcessingOrder(false);
+    if (isSplitMode) {
+      const totalSplit = splitPayments.reduce((acc, p) => acc + p.amount, 0);
+      if (totalSplit < Number(settlementOrder.totalAmount)) {
+        alert(`Total split amount (KES ${totalSplit}) is less than the order total (KES ${Number(settlementOrder.totalAmount)})`);
         return;
-      } else {
-        await confirmPayment({
-          id: settlementOrder.id,
-          method: settlementMethod
-        });
-        
-        setSettlementOrder(null);
-        setSettlementMethod(null);
-        setMpesaPhone('');
       }
-      
-      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-    } catch (err) {
-      console.error(err);
-      alert('Failed to confirm settlement.');
-    } finally {
-      setIsProcessingOrder(false);
+      confirmPaymentMutation({ id: settlementOrder.id, method: 'SPLIT', payments: splitPayments });
+    } else {
+      if (!settlementMethod) return;
+      setIsProcessingOrder(true);
+      try {
+        if (settlementMethod === 'MPESA') {
+          if (!mpesaPhone) {
+            alert('Please enter a phone number for M-Pesa.');
+            setIsProcessingOrder(false);
+            return;
+          }
+          await initiateMpesaMutation.mutateAsync({
+            orderId: settlementOrder.id,
+            phoneNumber: `254${mpesaPhone}`,
+            amount: Math.round(settlementOrder.totalAmount)
+          });
+          setIsWaitingPush(true);
+        } else {
+          await confirmPaymentMutation({
+            id: settlementOrder.id,
+            method: settlementMethod
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to confirm settlement.');
+      } finally {
+        setIsProcessingOrder(false);
+      }
     }
+  };
+
+  const addSplitPayment = (method: string, amount: number) => {
+    setSplitPayments([...splitPayments, { method, amount: Number(amount) }]);
+  };
+
+  const removeSplitPayment = (index: number) => {
+    setSplitPayments(splitPayments.filter((_, i) => i !== index));
   };
 
   const handleManualConfirm = async () => {
     if (!settlementOrder) return;
-    
-    setIsProcessingOrder(true);
-    try {
-      await confirmPayment({
-        id: settlementOrder.id,
-        method: 'MPESA'
-      });
-      
-      setSettlementOrder(null);
-      setIsWaitingPush(false);
-      setSettlementMethod(null);
-      setMpesaPhone('');
-      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-    } catch (err) {
-      console.error(err);
-      alert('Failed to manually confirm settlement.');
-    } finally {
-      setIsProcessingOrder(false);
-    }
+    confirmPaymentMutation({ id: settlementOrder.id, method: 'MPESA' });
   };
 
   const PAYMENT_METHODS = [
@@ -672,7 +675,9 @@ const WaiterDashboard = () => {
                              </span>
                           </td>
                           <td className="px-6 py-4">
-                             <button onClick={() => setActiveView('payments')} className="text-[#2271b1] hover:underline font-bold text-xs uppercase">Settle</button>
+                             {user?.role !== 'MANAGER' && (
+                               <button onClick={() => setActiveView('payments')} className="text-[#2271b1] hover:underline font-bold text-xs uppercase">Settle</button>
+                             )}
                           </td>
                        </tr>
                      ))}
@@ -718,12 +723,14 @@ const WaiterDashboard = () => {
                               <p className="text-sm font-black text-orange-600">KES {Number(order.totalAmount).toLocaleString()}</p>
                               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{order.status}</p>
                            </div>
-                           <button 
-                             onClick={() => handleQuickSettle(order)}
-                             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase tracking-widest transition-all"
-                           >
-                             Settle
-                           </button>
+                           {user?.role !== 'MANAGER' && (
+                             <button 
+                               onClick={() => handleQuickSettle(order)}
+                               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase tracking-widest transition-all"
+                             >
+                               Settle
+                             </button>
+                           )}
                         </div>
                       </div>
                     ))}
@@ -920,10 +927,6 @@ const WaiterDashboard = () => {
                      <span className="font-bold text-slate-400 uppercase tracking-widest">Sub Total</span>
                      <span className="font-bold text-slate-600">KES {subTotal.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between items-center text-[11px]">
-                     <span className="font-bold text-slate-400 uppercase tracking-widest">Tax (5%)</span>
-                     <span className="font-bold text-slate-600">KES {tax.toLocaleString()}</span>
-                  </div>
                   <div className="pt-3 mt-3 border-t border-[#ccd0d4] flex justify-between items-baseline">
                      <span className="text-xs font-black uppercase text-[#1d2327]">Total Bill</span>
                      <span className="text-lg lg:text-xl font-black text-[#2271b1]">KES {total.toLocaleString()}</span>
@@ -1004,7 +1007,7 @@ const WaiterDashboard = () => {
                </AnimatePresence>
     
                <button 
-                 disabled={cart.length === 0 || isProcessingOrder || !selectedPayment || !selectedTableId} 
+                 disabled={cart.length === 0 || isProcessingOrder || !selectedPayment || !selectedTableId || user?.role === "MANAGER"} 
                  onClick={handlePlaceOrder}
                  className="w-full py-4 bg-[#2271b1] hover:bg-[#135e96] text-white rounded font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-200 transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-3"
                >
@@ -1013,7 +1016,7 @@ const WaiterDashboard = () => {
                  ) : (
                    <>
                      <Plus size={18} />
-                     {selectedPayment ? `Pay & Send` : `Select Payment`}
+                     {user?.role === 'MANAGER' ? 'Manager View Only' : (selectedPayment ? `Pay & Send` : `Select Payment`)}
                    </>
                  )}
                </button>
@@ -1143,39 +1146,97 @@ const WaiterDashboard = () => {
                     <span className="text-2xl font-black text-[#2271b1]">KES {Number(settlementOrder.totalAmount).toLocaleString()}</span>
                  </div>
 
+                 <div className="flex items-center justify-between px-2">
+                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Split Payment?</span>
+                   <button 
+                     onClick={() => {
+                       setIsSplitMode(!isSplitMode);
+                       setSplitPayments([]);
+                       setSettlementMethod(null);
+                     }}
+                     className={`w-10 h-5 rounded-full transition-all relative ${isSplitMode ? "bg-[#2271b1]" : "bg-slate-200"}`}
+                   >
+                     <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isSplitMode ? "left-6" : "left-1"}`} />
+                   </button>
+                 </div>
+
                  {!isWaitingPush ? (
                    <>
-                     {/* Payment Method Selection */}
-                     <div className="space-y-3">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Select Payment Method</p>
-                        <div className="grid grid-cols-2 gap-3">
-                           {PAYMENT_METHODS.map((method) => (
-                             <button 
-                               key={method.id} 
-                               onClick={() => setSettlementMethod(method.id)}
-                               className={`relative flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${
-                                 settlementMethod === method.id 
-                                   ? 'border-[#2271b1] bg-blue-50/50 shadow-lg' 
-                                   : 'border-[#f0f0f1] hover:border-[#ccd0d4] bg-white'
-                               }`}
-                             >
-                               {method.img ? (
-                                 <img src={method.img} className="h-6 object-contain mb-2" alt="" />
-                               ) : (
-                                 method.icon && <method.icon className={`mb-2 ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`} size={20} />
-                               )}
-                               <span className={`text-[10px] font-black uppercase tracking-widest ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`}>
-                                 {method.label}
-                               </span>
-                               {settlementMethod === method.id && (
-                                 <div className="absolute -top-2 -right-2 bg-[#2271b1] text-white rounded-full p-1 border-2 border-white">
-                                   <CheckCircle2 size={10} />
-                                 </div>
-                               )}
-                             </button>
-                           ))}
+                      {/* Payment Method Selection */}
+                      {!isSplitMode ? (
+                        <div className="space-y-3">
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Select Payment Method</p>
+                           <div className="grid grid-cols-2 gap-3">
+                              {PAYMENT_METHODS.map((method) => (
+                                <button 
+                                  key={method.id} 
+                                  onClick={() => setSettlementMethod(method.id)}
+                                  className={`relative flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${
+                                    settlementMethod === method.id 
+                                      ? 'border-[#2271b1] bg-blue-50/50 shadow-lg' 
+                                      : 'border-[#f0f0f1] hover:border-[#ccd0d4] bg-white'
+                                  }`}
+                                >
+                                  {method.img ? (
+                                    <img src={method.img} className="h-6 object-contain mb-2" alt="" />
+                                  ) : (
+                                    method.icon && <method.icon className={`mb-2 ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`} size={20} />
+                                  )}
+                                  <span className={`text-[10px] font-black uppercase tracking-widest ${settlementMethod === method.id ? 'text-[#2271b1]' : 'text-slate-400'}`}>
+                                    {method.label}
+                                  </span>
+                                  {settlementMethod === method.id && (
+                                    <div className="absolute -top-2 -right-2 bg-[#2271b1] text-white rounded-full p-1 border-2 border-white">
+                                      <CheckCircle2 size={10} />
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
+                           </div>
                         </div>
-                     </div>
+                      ) : (
+                        <div className="space-y-4">
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Add Multiple Payments</p>
+                           <div className="space-y-2">
+                             {splitPayments.map((p, idx) => (
+                               <div key={idx} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-[#dcdcde]">
+                                 <div className="flex flex-col">
+                                   <span className="text-[9px] font-black text-[#2271b1] uppercase">{p.method}</span>
+                                   <span className="text-xs font-bold text-slate-700">KES {p.amount.toLocaleString()}</span>
+                                 </div>
+                                 <button onClick={() => removeSplitPayment(idx)} className="text-red-500 p-1 hover:bg-red-50 rounded"><X size={14} /></button>
+                               </div>
+                             ))}
+                             
+                             <div className="grid grid-cols-2 gap-2 pt-2">
+                               {PAYMENT_METHODS.map(m => (
+                                 <button
+                                   key={m.id}
+                                   onClick={() => {
+                                      const remaining = Number(settlementOrder.totalAmount) - splitPayments.reduce((acc, p) => acc + p.amount, 0);
+                                      if (remaining <= 0) return;
+                                      const amountStr = window.prompt(`Amount for ${m.label}:`, remaining.toString());
+                                      if (amountStr) {
+                                        const amount = Number(amountStr);
+                                        if (!isNaN(amount) && m.id) addSplitPayment(m.id, amount);
+                                      }
+                                   }}
+                                   className="px-3 py-2 border border-[#ccd0d4] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-500 hover:border-[#2271b1] hover:text-[#2271b1] transition-all"
+                                 >
+                                   + {m.label}
+                                 </button>
+                               ))}
+                             </div>
+                             
+                             {splitPayments.length > 0 && (
+                               <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+                                 <span className="text-[10px] font-black text-slate-400 uppercase">Paid So Far:</span>
+                                 <span className="text-sm font-black text-emerald-600">KES {splitPayments.reduce((acc,p) => acc + p.amount, 0).toLocaleString()}</span>
+                               </div>
+                             )}
+                           </div>
+                        </div>
+                      )}
 
                      {/* Phone Number for M-Pesa */}
                      <AnimatePresence>
@@ -1232,36 +1293,36 @@ const WaiterDashboard = () => {
                  </button>
                  
                  {isWaitingPush ? (
-                    <button
-                      disabled={isProcessingOrder}
-                      onClick={handleManualConfirm}
-                      className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-emerald-100 flex items-center justify-center gap-2"
-                    >
-                      {isProcessingOrder ? (
-                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>
-                           <CheckCircle2 size={16} />
-                           Confirm Received (Setted)
-                        </>
-                      )}
-                    </button>
-                 ) : (
-                    <button
-                      disabled={!settlementMethod || (settlementMethod === 'MPESA' && mpesaPhone.length < 9) || isProcessingOrder}
-                      onClick={handleConfirmSettlement}
-                      className="flex-[2] px-4 py-3 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
-                    >
-                      {isProcessingOrder ? (
-                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>
-                           <CheckCircle2 size={16} />
-                           Confirm Settlement
-                        </>
-                      )}
-                    </button>
-                 )}
+                     <button
+                       disabled={isConfirmingPayment}
+                       onClick={() => user?.role !== 'MANAGER' && handleManualConfirm()}
+                       className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-emerald-100 flex items-center justify-center gap-2"
+                     >
+                       {isConfirmingPayment ? (
+                         <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                       ) : (
+                         <>
+                            <CheckCircle2 size={16} />
+                            Confirm Received (Setted)
+                         </>
+                       )}
+                     </button>
+                  ) : (
+                     <button
+                       disabled={(!isSplitMode && !settlementMethod) || (isSplitMode && splitPayments.length === 0) || (settlementMethod === 'MPESA' && mpesaPhone.length < 9) || isConfirmingPayment}
+                       onClick={() => user?.role !== 'MANAGER' && handleConfirmSettlement()}
+                       className="flex-[2] px-4 py-3 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
+                     >
+                       {isConfirmingPayment ? (
+                         <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                       ) : (
+                         <>
+                            <CheckCircle2 size={16} />
+                            {isSplitMode ? 'Settle (Split)' : 'Confirm Settlement'}
+                         </>
+                       )}
+                     </button>
+                  )}
               </div>
             </motion.div>
           </motion.div>

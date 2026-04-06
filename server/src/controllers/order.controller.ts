@@ -188,52 +188,59 @@ export const getMyShiftSales = async (req: any, res: Response) => {
 
 export const confirmPayment = async (req: any, res: Response) => {
   const { id } = req.params;
-  const { method } = req.body; // CASH, MPESA, CARD, CHEQUE
+  const { method, payments } = req.body; // method (fallback), payments: Array<{ method, amount }>
   const io = req.app.get('io');
 
   try {
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { table: true }
+      include: { table: true, payments: true }
     });
 
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // 1. Transaction to update order and create payment
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // Update order status
-      const ord = await tx.order.update({
+      const paymentData = payments && Array.isArray(payments) ? payments : [{ method, amount: order.totalAmount }];
+      
+      // 1. Create payment records
+      for (const p of paymentData) {
+        await tx.payment.create({
+          data: {
+            orderId: id,
+            amount: Number(p.amount),
+            method: p.method,
+            status: 'COMPLETED',
+            reference: `POS-${Math.random().toString(36).substring(7).toUpperCase()}`,
+            details: JSON.stringify({ confirmedBy: req.user.name || req.user.id })
+          }
+        });
+      }
+
+      // 2. Check total paid
+      const allPayments = await tx.payment.findMany({ where: { orderId: id, status: 'COMPLETED' } });
+      const totalPaid = allPayments.reduce((acc, p) => acc + Number(p.amount), 0);
+      const isFullyPaid = totalPaid >= Number(order.totalAmount);
+
+      // 3. Update order status if fully paid
+      const updated = await tx.order.update({
         where: { id },
-        data: { status: 'PAID' },
-        include: { table: true, waiter: true }
+        data: { status: isFullyPaid ? 'PAID' : order.status },
+        include: { table: true, waiter: { select: { name: true } }, items: { include: { menuItem: true } } }
       });
 
-      // Create payment record
-      await tx.payment.create({
-        data: {
-          orderId: id,
-          amount: ord.totalAmount,
-          method,
-          status: 'COMPLETED',
-          reference: `POS-${Math.random().toString(36).substring(7).toUpperCase()}`,
-          details: JSON.stringify({ confirmedBy: req.user.name || req.user.id })
-        }
-      });
-
-      // Release table
-      if (ord.tableId) {
+      // 4. Release table if fully paid
+      if (isFullyPaid && updated.tableId) {
         await tx.table.update({
-          where: { id: ord.tableId },
+          where: { id: updated.tableId },
           data: { status: 'AVAILABLE' }
         });
       }
 
-      return ord;
+      return updated;
     });
 
-    // 2. Emit global update
     io.emit('order_status_update', updatedOrder);
-    io.emit('tables_update'); // Also notify about table free state
+    if (updatedOrder.status === 'PAID') io.emit('tables_update');
 
     res.status(200).json(updatedOrder);
   } catch (error) {

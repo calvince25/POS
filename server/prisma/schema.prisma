@@ -113,15 +113,16 @@ model MenuItem {
 }
 
 model Inventory {
-  id         String   @id @default(uuid())
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  menuItemId String   @unique
-  stock      Float    @default(0)
-  allocated  Float    @default(0)
-  minStock   Float    @default(5)
-  unit       String   @default("pcs")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id         String    @id @default(uuid())
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemId String?   @unique
+  customName String?
+  stock      Float     @default(0)
+  allocated  Float     @default(0)
+  minStock   Float     @default(5)
+  unit       String    @default("pcs")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model Category {

@@ -36,16 +36,22 @@ const ManagerDashboard = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ stock: 0, allocated: 0, minStock: 5, unit: 'pcs' });
-  const [addForm, setAddForm] = useState({ menuItemId: '', stock: 0, unit: 'pcs' });
+  const [addForm, setAddForm] = useState({ menuItemId: '', customName: '', isCustom: false, stock: 0, unit: 'pcs' });
 
   // Mutations
   const replenishMutation = useMutation({
-    mutationFn: (data: { menuItemId: string, amount: number, unit: string, isAllocation: boolean }) =>
-      api.post(`/inventory/replenish/${data.menuItemId}`, { amount: data.amount, unit: data.unit, isAllocation: data.isAllocation }),
+    mutationFn: (data: { menuItemId?: string, customName?: string, amount: number, unit: string, isAllocation: boolean }) =>
+      api.post('/inventory/replenish', { 
+        menuItemId: data.menuItemId,
+        customName: data.customName,
+        amount: data.amount, 
+        unit: data.unit, 
+        isAllocation: data.isAllocation 
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manager-inventory'] });
       setShowAddModal(false);
-      setAddForm({ menuItemId: '', stock: 0, unit: 'pcs' });
+      setAddForm({ menuItemId: '', customName: '', isCustom: false, stock: 0, unit: 'pcs' });
     }
   });
 
@@ -276,9 +282,14 @@ const ManagerDashboard = () => {
                     <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div>
-                          <span className="text-sm font-bold text-[#1d2327]">{inv.menuItem.name}</span>
-                          {inv.menuItem.category && (
+                          <span className="text-sm font-bold text-[#1d2327]">
+                            {inv.menuItem ? inv.menuItem.name : inv.customName}
+                          </span>
+                          {inv.menuItem?.category && (
                             <p className="text-[10px] text-slate-400 font-medium">{inv.menuItem.category.name}</p>
+                          )}
+                          {!inv.menuItem && (
+                            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">General Stock</p>
                           )}
                         </div>
                       </td>
@@ -528,27 +539,53 @@ const ManagerDashboard = () => {
             >
               <div className="p-6 bg-[#f6f7f7] border-b border-[#dcdcde]">
                 <h3 className="text-sm font-black uppercase tracking-widest text-[#1d2327] flex items-center gap-2">
-                  <Plus size={14} className="text-emerald-600" />
-                  Add Menu Item to Inventory
+                  <Package size={14} className="text-emerald-600" />
+                  Add to Inventory
                 </h3>
               </div>
               <div className="p-6 space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Select Menu Item</label>
-                  <select
-                    value={addForm.menuItemId}
-                    onChange={e => setAddForm({...addForm, menuItemId: e.target.value})}
-                    className="w-full border border-[#ccd0d4] rounded px-4 py-2.5 text-sm font-medium outline-none focus:border-[#2271b1]"
+                {/* Item Type Toggle */}
+                <div className="flex bg-[#f0f0f1] p-1 rounded-sm">
+                  <button 
+                    onClick={() => setAddForm({...addForm, isCustom: false})}
+                    className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all ${!addForm.isCustom ? 'bg-white shadow-sm text-[#2271b1]' : 'text-slate-400'}`}
                   >
-                    <option value="">-- Select an item --</option>
-                    {untrackedMenuItems.map((item: any) => (
-                      <option key={item.id} value={item.id}>{item.name} (KES {item.price})</option>
-                    ))}
-                  </select>
-                  {untrackedMenuItems.length === 0 && (
-                    <p className="text-[10px] text-amber-600 font-bold">All menu items are already tracked in inventory.</p>
-                  )}
+                    Menu Item
+                  </button>
+                  <button 
+                    onClick={() => setAddForm({...addForm, isCustom: true})}
+                    className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all ${addForm.isCustom ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                  >
+                    General / Misc
+                  </button>
                 </div>
+
+                {addForm.isCustom ? (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Item Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Flour, Sugar, Cooking Oil"
+                      value={addForm.customName}
+                      onChange={e => setAddForm({...addForm, customName: e.target.value})}
+                      className="w-full border border-[#ccd0d4] rounded px-4 py-2.5 text-sm font-medium outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Select Menu Item</label>
+                    <select
+                      value={addForm.menuItemId}
+                      onChange={e => setAddForm({...addForm, menuItemId: e.target.value})}
+                      className="w-full border border-[#ccd0d4] rounded px-4 py-2.5 text-sm font-medium outline-none focus:border-[#2271b1]"
+                    >
+                      <option value="">-- Select --</option>
+                      {untrackedMenuItems.map((item: any) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initial Stock</label>
@@ -585,10 +622,13 @@ const ManagerDashboard = () => {
                 </button>
                 <button
                   onClick={() => {
-                    if (!addForm.menuItemId) return alert('Please select a menu item');
+                    if (!addForm.isCustom && !addForm.menuItemId) return alert('Please select a menu item');
+                    if (addForm.isCustom && !addForm.customName) return alert('Please enter item name');
                     if (addForm.stock <= 0) return alert('Stock must be greater than 0');
+                    
                     replenishMutation.mutate({
-                      menuItemId: addForm.menuItemId,
+                      menuItemId: addForm.isCustom ? undefined : addForm.menuItemId,
+                      customName: addForm.isCustom ? addForm.customName : undefined,
                       amount: addForm.stock,
                       unit: addForm.unit,
                       isAllocation: true

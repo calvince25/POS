@@ -132,3 +132,25 @@ export const updateShift = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error updating shift. Please try again.' });
   }
 };
+
+export const deleteStaff = async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  try {
+    // Check if user exists
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    // Delete related shifts first to avoid foreign key constraints
+    await prisma.shift.deleteMany({ where: { userId: id } });
+
+    // Delete the user
+    await prisma.user.delete({ where: { id } });
+
+    res.status(200).json({ message: 'Staff member deleted successfully' });
+  } catch (error) {
+    console.error('[deleteStaff Error]:', error);
+    res.status(500).json({ message: 'Error deleting staff member' });
+  }
+};

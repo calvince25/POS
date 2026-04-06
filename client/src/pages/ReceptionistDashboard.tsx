@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import {
   BedDouble, Plus, User, Phone, X,
@@ -30,6 +31,7 @@ const BOOKING_BADGE: Record<string, string> = {
 
 // ─── Component ──────────────────────────────────────────────────────
 const ReceptionistDashboard = () => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'rooms' | 'bookings'>('rooms');
@@ -204,12 +206,14 @@ const ReceptionistDashboard = () => {
           >
             <Download size={13} /> PDF Report
           </button>
-          <button
-            onClick={() => openBook()}
-            className="flex items-center gap-2 px-4 py-2 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-sm font-bold text-sm shadow-sm transition-all"
-          >
-            <Plus size={16} /> Lodge Guest
-          </button>
+          {user?.role !== 'MANAGER' && (
+            <button
+              onClick={() => openBook()}
+              className="flex items-center gap-2 px-4 py-2 bg-[#2271b1] hover:bg-[#135e96] text-white rounded-sm font-bold text-sm shadow-sm transition-all"
+            >
+              <Plus size={16} /> Lodge Guest
+            </button>
+          )}
         </div>
       </div>
 
@@ -342,12 +346,18 @@ const ReceptionistDashboard = () => {
 
                       {/* CTA */}
                       {isAvail ? (
-                        <button
-                          onClick={e => { e.stopPropagation(); openBook(room); }}
-                          className="w-full mt-2 md:mt-1 text-xs md:text-[9px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 md:py-1.5 rounded-sm transition-all active:scale-[0.98]"
-                        >
-                          + Book Now
-                        </button>
+                        user?.role !== 'MANAGER' ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); openBook(room); }}
+                            className="w-full mt-2 md:mt-1 text-xs md:text-[9px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 md:py-1.5 rounded-sm transition-all active:scale-[0.98]"
+                          >
+                            + Book Now
+                          </button>
+                        ) : (
+                          <div className="w-full mt-2 md:mt-1 text-[8px] font-bold text-center py-1.5 border border-dashed border-emerald-200 text-emerald-600 rounded-sm">
+                            Available for Booking
+                          </div>
+                        )
                       ) : room.status === 'CLEANING' ? (
                         <button
                           onClick={e => {
@@ -422,7 +432,7 @@ const ReceptionistDashboard = () => {
                         </td>
                         <td className="p-3">
                           <div className="flex items-center gap-1 flex-wrap">
-                            {['CONFIRMED', 'CHECKED_IN'].includes(b.status) && (
+                            {['CONFIRMED', 'CHECKED_IN'].includes(b.status) && user?.role !== 'MANAGER' && (
                               <button
                                 onClick={() => { setSelectedBookingForPay(b); setShowMpesaModal(true); }}
                                 className="flex items-center gap-1 px-2.5 py-1 bg-[#4caf50] text-white text-[9px] font-bold rounded-sm hover:bg-[#388e3c] whitespace-nowrap"

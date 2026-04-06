@@ -9,7 +9,8 @@ import {
   Lock,
   User,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -52,6 +53,17 @@ const StaffManagement = () => {
       setRoleModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       alert('Role updated successfully!');
+    }
+  });
+
+  const deleteStaffMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/staff/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      alert('Staff member deleted successfully!');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Error deleting staff member');
     }
   });
 
@@ -130,12 +142,21 @@ const StaffManagement = () => {
                   <Lock size={10} />
                   PWD
                 </button>
-                <button 
-                  onClick={() => updateStatusMutation.mutate({ id: s.id, status: s.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' })}
-                  className={`flex items-center justify-center gap-1 py-2 border font-bold text-[9px] transition-all rounded-sm uppercase tracking-wider ${s.status === 'ACTIVE' ? 'border-[#d63638] text-[#d63638] hover:bg-[#d63638] hover:text-white' : 'border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white'}`}
-                >
                   <Activity size={10} />
                   {s.status === 'ACTIVE' ? 'DEACT' : 'ACT'}
+                </button>
+                <button 
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to permanently delete ${s.name}? This action cannot be undone.`)) {
+                      deleteStaffMutation.mutate(s.id);
+                    }
+                  }}
+                  disabled={deleteStaffMutation.isPending}
+                  className="flex items-center justify-center gap-1 py-2 border border-[#dcdc68] bg-[#fdfdf0] text-[#856404] hover:bg-[#d63638] hover:text-white hover:border-[#d63638] font-bold text-[9px] transition-all rounded-sm uppercase tracking-wider disabled:opacity-50"
+                  title="Delete Staff"
+                >
+                  <Trash2 size={10} />
+                  DEL
                 </button>
               </div>
             </motion.div>

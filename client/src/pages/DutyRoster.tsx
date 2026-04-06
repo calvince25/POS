@@ -10,9 +10,12 @@ import {
   Briefcase,
   Home,
   Palmtree,
-  Info
+  Info,
+  X,
+  Check
 } from 'lucide-react';
-import { format, startOfWeek, addDays, isSameDay, parseISO, addWeeks, subWeeks } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, parseISO, addWeeks, subWeeks, setHours, setMinutes } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // — Shift definitions —
 const SHIFT_OPTIONS = [
@@ -29,6 +32,8 @@ const DutyRoster = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedCell, setSelectedCell] = useState<{ staffId: string, day: Date, shift: any } | null>(null);
+  const [timeForm, setTimeForm] = useState({ role: '', startTime: '08:00', endTime: '16:00' });
   
   const isManager = ['MANAGER', 'OWNER'].includes(user?.role || '');
 
@@ -55,28 +60,53 @@ const DutyRoster = () => {
     shifts?.find((s: any) => s.userId === staffId && isSameDay(parseISO(s.date), day)) || null, 
   [shifts]);
 
-  const handleCellChange = (staffId: string, day: Date, value: string, existingShift: any) => {
+  const handleCellClick = (staffId: string, day: Date, shift: any) => {
     if (!isManager) return;
-    // Default times based on shift value
-    let startTime = null, endTime = null;
-    if (value === 'MORNING') {
-      const s = new Date(day); s.setHours(8,0,0,0);
-      const e = new Date(day); e.setHours(16,0,0,0);
-      startTime = s.toISOString(); endTime = e.toISOString();
-    } else if (value === 'EVENING') {
-      const s = new Date(day); s.setHours(16,0,0,0);
-      const e = new Date(day); e.setHours(23,59,0,0);
-      startTime = s.toISOString(); endTime = e.toISOString();
-    }
+    setSelectedCell({ staffId, day, shift });
+    
+    // Initialize form with existing data or defaults
+    const shiftRole = shift?.role?.toUpperCase() || 'MORNING';
+    const sDate = shift?.startTime ? parseISO(shift.startTime) : null;
+    const eDate = shift?.endTime ? parseISO(shift.endTime) : null;
 
-    assignMutation.mutate({
-      userId: staffId,
-      date: day.toISOString(),
-      role: value,
-      startTime,
-      endTime,
-      existingId: existingShift?.id,
+    setTimeForm({
+      role: shiftRole,
+      startTime: sDate ? format(sDate, 'HH:mm') : (shiftRole === 'EVENING' ? '16:00' : '08:00'),
+      endTime: eDate ? format(eDate, 'HH:mm') : (shiftRole === 'EVENING' ? '23:59' : '16:00')
     });
+  };
+
+  const handleSaveShift = () => {
+    if (!selectedCell) return;
+    const { staffId, day, shift } = selectedCell;
+    const { role, startTime, endTime } = timeForm;
+
+    if (role === 'OFF' || role === 'LEAVE' || role === '') {
+      assignMutation.mutate({
+        userId: staffId,
+        date: day.toISOString(),
+        role: role || '',
+        startTime: null,
+        endTime: null,
+        existingId: shift?.id,
+      });
+    } else {
+      const [sH, sM] = startTime.split(':').map(Number);
+      const [eH, eM] = endTime.split(':').map(Number);
+
+      const s = setMinutes(setHours(new Date(day), sH), sM);
+      const e = setMinutes(setHours(new Date(day), eH), eM);
+
+      assignMutation.mutate({
+        userId: staffId,
+        date: day.toISOString(),
+        role,
+        startTime: s.toISOString(),
+        endTime: e.toISOString(),
+        existingId: shift?.id,
+      });
+    }
+    setSelectedCell(null);
   };
 
   if (staffLoading || shiftsLoading) {
@@ -170,41 +200,31 @@ const DutyRoster = () => {
 
                     return (
                       <td key={day.toISOString()} className={`px-1.5 py-2 border-r border-[#dcdcde] transition-colors relative ${isToday ? 'bg-blue-50/30 ring-1 ring-inset ring-blue-100/50' : ''}`}>
-                        {isManager ? (
-                          /* MANAGER EDITABLE CELL */
-                          <div className="relative group/cell">
-                            <select 
-                              value={shiftVal}
-                              onChange={(e) => handleCellChange(s.id, day, e.target.value, shift)}
-                              className={`
-                                w-full text-[10px] font-black px-2 py-1.5 pr-6 rounded border transition-all appearance-none cursor-pointer outline-none focus:ring-2 focus:ring-[#2271b1]/20
-                                ${shiftVal ? shiftMeta.color : 'bg-[#fff] border-[#ccd0d4] text-[#8c8f94] hover:border-[#2271b1]'}
-                              `}
-                            >
-                              {SHIFT_OPTIONS.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
-                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
-                              <ChevronDown size={10} className="" />
-                            </div>
-                          </div>
-                        ) : (
-                          /* STAFF READ-ONLY CELL - THE TINY PRESENTABLE VERSION */
-                          <div className={`
-                            w-full py-2.5 rounded border text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all shadow-sm
+                        <button
+                          onClick={() => handleCellClick(s.id, day, shift)}
+                          disabled={!isManager}
+                          className={`
+                            w-full py-2.5 rounded border text-[9px] font-black uppercase tracking-widest flex flex-col items-center justify-center gap-0.5 transition-all shadow-sm
                             ${shiftVal ? shiftMeta.color : 'bg-transparent border-dashed border-[#e2e4e7] text-slate-300'}
-                          `}>
-                            {shiftVal ? (
-                              <>
+                            ${isManager ? 'hover:scale-[1.02] active:scale-95 cursor-pointer' : 'cursor-default'}
+                          `}
+                        >
+                          {shiftVal ? (
+                            <>
+                              <div className="flex items-center gap-1.5">
                                 <shiftMeta.icon size={11} className="shrink-0" />
                                 <span className="truncate">{shiftMeta.label.split(' ')[0]}</span>
-                              </>
-                            ) : (
-                              '–'
-                            )}
-                          </div>
-                        )}
+                              </div>
+                              {(shift?.startTime || shift?.endTime) && (
+                                <span className="text-[7px] opacity-70">
+                                  {shift.startTime ? format(parseISO(shift.startTime), 'HH:mm') : '??'}–{shift.endTime ? format(parseISO(shift.endTime), 'HH:mm') : '??'}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            '–'
+                          )}
+                        </button>
                       </td>
                     );
                   })}
@@ -214,6 +234,84 @@ const DutyRoster = () => {
           </tbody>
         </table>
       </div>
+
+      <AnimatePresence>
+        {selectedCell && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-xl shadow-2xl overflow-hidden border border-[#dcdcde]"
+            >
+              <div className="bg-[#2271b1] p-5 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest">Assign Shift</h3>
+                  <p className="text-[13px] font-bold mt-0.5">{staff?.find((st: any) => st.id === selectedCell.staffId)?.name} · {format(selectedCell.day, 'EEE, MMM d')}</p>
+                </div>
+                <button onClick={() => setSelectedCell(null)} className="hover:rotate-90 transition-transform"><X size={18} /></button>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Shift Category</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SHIFT_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setTimeForm({ ...timeForm, role: opt.value })}
+                        className={`px-3 py-2.5 rounded border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${timeForm.role === opt.value ? 'bg-[#2271b1] text-white border-[#2271b1] shadow-md shadow-blue-100' : 'bg-white text-slate-400 border-[#dcdcde] hover:border-[#2271b1] hover:text-[#2271b1]'}`}
+                      >
+                        <opt.icon size={12} />
+                        {opt.label.split(' ')[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {['MORNING', 'EVENING'].includes(timeForm.role) && (
+                  <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Start Time</label>
+                      <input 
+                        type="time" 
+                        value={timeForm.startTime}
+                        onChange={(e) => setTimeForm({ ...timeForm, startTime: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-[#dcdcde] rounded text-sm font-bold focus:border-[#2271b1] outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End Time</label>
+                      <input 
+                        type="time" 
+                        value={timeForm.endTime}
+                        onChange={(e) => setTimeForm({ ...timeForm, endTime: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-[#dcdcde] rounded text-sm font-bold focus:border-[#2271b1] outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex gap-3">
+                  <button 
+                    onClick={() => setSelectedCell(null)}
+                    className="flex-1 px-4 py-3 border border-[#ccd0d4] rounded text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSaveShift}
+                    disabled={assignMutation.isPending}
+                    className="flex-1 px-4 py-3 bg-[#2271b1] text-white rounded text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100 hover:bg-[#135e96] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {assignMutation.isPending ? 'Saving...' : <><Check size={14} /> Update Shift</>}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* FOOTER LEGEND AND INFO */}
       <div className="px-6 py-4 bg-slate-50/50 border-t border-[#f0f0f1] flex flex-wrap gap-x-6 gap-y-3">
@@ -228,10 +326,5 @@ const DutyRoster = () => {
   );
 };
 
-const ChevronDown = ({ size, className = "" }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M6 9l6 6 6-6" />
-  </svg>
-);
 
 export default DutyRoster;
