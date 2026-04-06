@@ -3,11 +3,7 @@
   "buildCommand": "npm run build --prefix client",
   "outputDirectory": "client/dist",
   "installCommand": "npm install --prefix client && npm install --prefix server",
-  "functions": {
-    "api/index.ts": {
-      "memory": 1024
-    }
-  },
+
   "rewrites": [
     {
       "source": "/api/(.*)",
